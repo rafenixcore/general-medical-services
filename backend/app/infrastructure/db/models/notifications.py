@@ -20,7 +20,10 @@ class NotificationEventModel(Base):
     )
     recipient_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     assignment_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("calendar_assignments.id"), nullable=True, index=True
+        String(36),
+        ForeignKey("calendar_assignments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("mission_assignments.id"), nullable=True, index=True
