@@ -13,6 +13,7 @@ interface Props {
   areaId: string;
   areaName: string;
   currentDoctorId?: string;
+  currentDoctorName?: string;
   currentAssignmentId?: string;
   onConfirm: (doctorId: string, forceWarnings: string[], justification: string) => void;
   onClose: () => void;
@@ -25,7 +26,7 @@ type Step = "select" | "evaluating" | "review-warnings";
 
 export function AssignDoctorModal({
   calendarId, date, areaId, areaName,
-  currentDoctorId, currentAssignmentId, onConfirm, onClose, isLoading, onRemove, submitError,
+  currentDoctorId, currentDoctorName, currentAssignmentId, onConfirm, onClose, isLoading, onRemove, submitError,
 }: Props) {
   const [query, setQuery] = useState("");
   // Por defecto solo se ofrecen médicos cuyo día marcado es este (los fijos
@@ -197,6 +198,12 @@ export function AssignDoctorModal({
           <button className="btn-icon" onClick={onClose} aria-label="Cerrar">&times;</button>
         </div>
 
+        {currentDoctorName && (
+          <p style={{ margin: "0 0 10px", fontSize: 13, color: "#334155" }}>
+            Asignado actualmente: <strong>{currentDoctorName}</strong>
+          </p>
+        )}
+
         {step === "select" && (
           <>
             <div style={{ marginBottom: 10 }}>
@@ -341,7 +348,7 @@ export function AssignDoctorModal({
               <button className="btn-secondary" onClick={onClose}>Cancelar</button>
               {onRemove && (
                 <button className="btn-secondary" onClick={onRemove} style={{ marginRight: "auto", color: "#b91c1c", borderColor: "#fecaca" }}>
-                  Quitar asignación
+                  {currentDoctorName ? `Quitar asignación de ${currentDoctorName}` : "Quitar asignación"}
                 </button>
               )}
               <div />
