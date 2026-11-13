@@ -213,6 +213,24 @@ describe("AssignDoctorModal", () => {
     expect(onRemove).toHaveBeenCalled();
   });
 
+  it("muestra el médico asignado actualmente y lo nombra al quitar", async () => {
+    render(
+      <AssignDoctorModal
+        {...BASE_PROPS}
+        currentDoctorId="d2"
+        currentDoctorName="Dr. López Ruiz"
+        onRemove={vi.fn()}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Dr. García Martínez")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/asignado actualmente/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /quitar asignación de dr\. lópez ruiz/i })
+    ).toBeInTheDocument();
+  });
+
   it("el interruptor de otros días recarga con strict=false y muestra fuera-de-día", async () => {
     const user = userEvent.setup();
     const { calendarsApi } = await import("../../api/calendars");

@@ -1146,17 +1146,20 @@ class AssignmentService:
                 _year = cal.year
                 _month = cal.month
 
-        self.calendar_repo.delete_assignment(assignment_id)
-
-        if self.audit is not None:
-            self.audit.log_assignment_removed(actor_id=actor_id, assignment_id=assignment_id)
-
+        # Avisar y cancelar ANTES del borrado: el aviso referencia la
+        # asignación por FK y las confirmaciones se buscan por assignment_id.
+        # La FK con ON DELETE SET NULL desvincula el historial al borrar.
         if should_notify and self.triggers is not None:
             self.triggers.on_calendar_assignment_removed_after_approval(
                 actor_id=actor_id,
                 assignment=assignment,
                 service_area_name=service_area_name,
             )
+
+        self.calendar_repo.delete_assignment(assignment_id)
+
+        if self.audit is not None:
+            self.audit.log_assignment_removed(actor_id=actor_id, assignment_id=assignment_id)
 
         # Schedule debounced ranking refresh
         if self._mission_ranking_service is not None and _year is not None:

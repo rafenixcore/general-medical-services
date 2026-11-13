@@ -46,7 +46,7 @@ const GENERATION_MODE_LABELS = {
   scheduled_auto: "Auto programado",
 } as const;
 
-interface AssignTarget { date: string; areaId: string; areaName: string; currentAssignmentId?: string; currentDoctorId?: string; }
+interface AssignTarget { date: string; areaId: string; areaName: string; currentAssignmentId?: string; currentDoctorId?: string; currentDoctorName?: string; }
 
 interface CalendarDay {
   day: number;
@@ -468,7 +468,7 @@ export function CalendarGrid() {
                   const handleAreaClick = () => {
                     if (!isEditableSlot) return;
                     if (areaAss.slot?.assignment) {
-                      setAssignTarget({ date: cd.dateStr, areaId: areaAss.areaId, areaName: areaAss.areaName, currentAssignmentId: areaAss.slot.assignment.id, currentDoctorId: areaAss.slot.assignment.doctor_id });
+                      setAssignTarget({ date: cd.dateStr, areaId: areaAss.areaId, areaName: areaAss.areaName, currentAssignmentId: areaAss.slot.assignment.id, currentDoctorId: areaAss.slot.assignment.doctor_id, currentDoctorName: doctor?.name });
                     } else {
                       setAssignTarget({ date: cd.dateStr, areaId: areaAss.areaId, areaName: areaAss.areaName });
                     }
@@ -523,6 +523,7 @@ export function CalendarGrid() {
                       areaName: areaAss.areaName,
                       currentAssignmentId: areaAss.slot.assignment.id,
                       currentDoctorId: areaAss.slot.assignment.doctor_id,
+                      currentDoctorName: doctor?.name,
                     });
                     setAssignmentWarning(null);
                   } else {
@@ -778,6 +779,7 @@ export function CalendarGrid() {
           areaId={assignTarget.areaId}
           areaName={assignTarget.areaName}
           currentDoctorId={assignTarget.currentDoctorId}
+          currentDoctorName={assignTarget.currentDoctorName}
           currentAssignmentId={assignTarget.currentAssignmentId}
           onConfirm={(doctorId, forceWarnings, justification) => assignMutation.mutate({ doctorId, forceWarnings, justification })}
           onClose={() => { setAssignTarget(null); setAssignmentWarning(null); }}

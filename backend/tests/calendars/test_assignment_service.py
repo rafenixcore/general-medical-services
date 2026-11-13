@@ -2,10 +2,15 @@ import datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from backend.app.application.calendars.assignment_service import AssignmentService
 from backend.app.application.calendars.errors import CalendarServiceError
+from backend.app.application.confirmations.service import ConfirmationRequestService
 from backend.app.application.doctors.service import DoctorService
+from backend.app.application.notifications.providers import FakeProvider
+from backend.app.application.notifications.service import NotificationService
+from backend.app.application.notifications.triggers import NotificationTriggers
 from backend.app.infrastructure.db.models.calendars import (
     CalendarModel,
     CalendarVersionModel,
@@ -16,9 +21,13 @@ from backend.app.infrastructure.db.models.availability import (
     DoctorRestrictionModel,
 )
 from backend.app.infrastructure.db.models.catalogs import ServiceAreaModel
+from backend.app.infrastructure.db.models.confirmations import ConfirmationRequestModel
+from backend.app.infrastructure.db.models.notifications import NotificationEventModel
 from backend.app.infrastructure.repositories.availability import AvailabilityRepository
 from backend.app.infrastructure.repositories.calendars import CalendarRepository
+from backend.app.infrastructure.repositories.confirmations import ConfirmationRequestRepository
 from backend.app.infrastructure.repositories.doctors import DoctorRepository
+from backend.app.infrastructure.repositories.notifications import NotificationRepository
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -33,6 +42,24 @@ def _make_assignment_service(db_session) -> AssignmentService:
         CalendarRepository(db_session),
         DoctorRepository(db_session),
         AvailabilityRepository(db_session),
+    )
+
+
+def _make_notifying_assignment_service(db_session) -> AssignmentService:
+    return AssignmentService(
+        CalendarRepository(db_session),
+        DoctorRepository(db_session),
+        AvailabilityRepository(db_session),
+        triggers=NotificationTriggers(
+            notification_service=NotificationService(
+                repo=NotificationRepository(db_session),
+                provider=FakeProvider(),
+            ),
+            doctor_repo=DoctorRepository(db_session),
+            confirmation_service=ConfirmationRequestService(
+                ConfirmationRequestRepository(db_session),
+            ),
+        ),
     )
 
 
@@ -286,6 +313,77 @@ def test_remove_assignment_from_approved_week_raises(db_session) -> None:
 
     assert exc_info.value.code == "week_locked"
     assert cal_repo.get_assignment_by_id(assignment.id) is not None
+
+
+def test_remove_assignment_desbloqueada_con_historial(db_session) -> None:
+    """Quitar en una versión desbloqueada borra, avisa y conserva el historial."""
+    _calendar, version = _create_calendar_and_version(db_session)
+    doctor = _create_doctor(db_session)
+    service = _make_notifying_assignment_service(db_session)
+    cal_repo = CalendarRepository(db_session)
+
+    assignment = service.assign_doctor(
+        actor_id="actor-001",
+        version_id=version.id,
+        doctor_id=doctor.id,
+        date=datetime.date(2026, 5, 15),
+        service_area_id=_AREA_ID,
+    )
+    # Simula un calendario aprobado y luego desbloqueado.
+    version.reason = "__unlock__test__orig__"
+
+    now = datetime.datetime.now(datetime.UTC)
+    historica = NotificationEventModel(
+        id=str(uuid4()),
+        notification_type="initial_assignment",
+        idempotency_key=f"assign:{assignment.id}",
+        recipient_doctor_id=doctor.id,
+        recipient_phone="+18095551234",
+        assignment_id=assignment.id,
+        status="sent",
+        payload={"message": "aviso previo"},
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add(historica)
+    confirmacion = ConfirmationRequestModel(
+        id=str(uuid4()),
+        confirmation_type="service",
+        status="pending",
+        idempotency_key=f"service:{assignment.id}:{doctor.id}",
+        response_token=f"tok-{uuid4()}",
+        doctor_id=doctor.id,
+        assignment_id=assignment.id,
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add(confirmacion)
+    db_session.flush()
+
+    service.remove_assignment(actor_id="actor-001", assignment_id=assignment.id)
+    db_session.commit()
+
+    assert cal_repo.get_assignment_by_id(assignment.id) is None
+
+    db_session.expire_all()
+    historica_db = db_session.scalars(
+        select(NotificationEventModel).where(NotificationEventModel.id == historica.id)
+    ).one()
+    assert historica_db.assignment_id is None
+
+    confirmacion_db = db_session.get(ConfirmationRequestModel, confirmacion.id)
+    assert confirmacion_db is not None
+    assert confirmacion_db.assignment_id is None
+    assert confirmacion_db.status == "cancelled"
+
+    aviso = db_session.scalars(
+        select(NotificationEventModel).where(
+            NotificationEventModel.idempotency_key
+            == f"service_change_removed:{assignment.id}:{doctor.id}"
+        )
+    ).one()
+    assert aviso.notification_type == "service_assignment_removed"
+    assert aviso.assignment_id is None
 
 
 # ---------------------------------------------------------------------------

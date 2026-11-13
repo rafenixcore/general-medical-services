@@ -9,7 +9,7 @@ def test_alembic_has_single_head():
 
     heads = script.get_heads()
     assert len(heads) == 1, f"Expected single head, got: {heads}"
-    assert heads == ["a2446a0123b3"]
+    assert heads == ["20261113_0044"]
 
 
 def test_set_password_tokens_table_has_migration():

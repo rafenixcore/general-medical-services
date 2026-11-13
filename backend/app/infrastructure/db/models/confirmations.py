@@ -21,7 +21,10 @@ class ConfirmationRequestModel(Base):
         String(36), ForeignKey("notification_events.id"), nullable=True, index=True
     )
     assignment_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("calendar_assignments.id"), nullable=True, index=True
+        String(36),
+        ForeignKey("calendar_assignments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     mission_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("mission_assignments.id"), nullable=True, index=True
