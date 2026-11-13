@@ -65,9 +65,13 @@ class NotificationService:
             updated_at=now,
         )
         try:
-            return self.repo.add(event)
+            # SAVEPOINT, no `session.rollback()`. La transacción es de la RUTA
+            # (Route → Service → Repository (flush) → Route (commit)): un
+            # rollback aquí deshacía el trabajo ya escenificado por la ruta
+            # —incluido el DELETE de la asignación— y la ruta respondía 2xx.
+            with self.repo.session.begin_nested():
+                return self.repo.add(event)
         except IntegrityError:
-            self.repo.session.rollback()
             existing = self.repo.get_by_idempotency_key(idempotency_key)
             if existing is not None:
                 return existing
