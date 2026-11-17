@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from backend.app.application.audit.service import AuditService
 from backend.app.application.calendars.errors import CalendarServiceError
+from backend.app.application.notifications.service_hours import service_start_utc
 from backend.app.domain.availability_rules import belongs_to_operational_month
 from backend.app.domain.calendars.engine import CalendarEngine, GenerationContext
 from backend.app.domain.calendars.scoring import AREA_WEIGHTS
@@ -220,12 +221,11 @@ class GenerationService:
                     created_by=actor_id,
                     created_at=now,
                 )
-                # Resolve service_start_at from ServiceAreaModel.start_hour
+                # La hora del área es local del hospital: se guarda su instante UTC.
                 area = self.calendar_repo.session.get(ServiceAreaModel, area_uuid)
                 if area and area.start_hour is not None:
-                    assignment.service_start_at = datetime(
-                        result.slot.date.year, result.slot.date.month, result.slot.date.day,
-                        area.start_hour, 0, 0, tzinfo=UTC,
+                    assignment.service_start_at = service_start_utc(
+                        result.slot.date, area.start_hour
                     )
                 self.calendar_repo.add_assignment(assignment)
             else:
@@ -425,9 +425,8 @@ class GenerationService:
             )
             area = self.calendar_repo.session.get(ServiceAreaModel, area_uuid)
             if area and area.start_hour is not None:
-                assignment.service_start_at = datetime(
-                    gap.service_date.year, gap.service_date.month, gap.service_date.day,
-                    area.start_hour, 0, 0, tzinfo=UTC,
+                assignment.service_start_at = service_start_utc(
+                    gap.service_date, area.start_hour
                 )
             self.calendar_repo.add_assignment(assignment)
 

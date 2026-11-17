@@ -85,6 +85,52 @@ def test_list_service_areas_returns_read_schema(client):
     assert "active" in item
     assert "required_for_daily_coverage" in item
     assert "load_weight" in item
+    # La hora del área se expone para poder revisarla y corregirla: es la que usan
+    # los avisos y los plazos de confirmación.
+    assert "start_hour" in item
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/catalogs/service-areas/{area_id}
+# ---------------------------------------------------------------------------
+
+
+def test_update_service_area_start_hour_success(client, mock_service):
+    from backend.app.infrastructure.db.models.catalogs import ServiceAreaModel
+
+    area = ServiceAreaModel(
+        id="area-pista", code="pista", display_name="Pista", active=True,
+        required_for_daily_coverage=True, load_weight=2, start_hour=6,
+    )
+    mock_service.update_service_area_start_hour.return_value = area
+
+    resp = client.patch(
+        "/api/catalogs/service-areas/area-pista", json={"start_hour": 6}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["start_hour"] == 6
+    mock_service.update_service_area_start_hour.assert_called_once_with("area-pista", 6)
+
+
+def test_update_service_area_start_hour_out_of_range(client):
+    resp = client.patch(
+        "/api/catalogs/service-areas/area-pista", json={"start_hour": 24}
+    )
+    assert resp.status_code == 422
+
+
+def test_update_service_area_start_hour_not_found(client, mock_service):
+    from backend.app.application.catalogs.service import CatalogError
+
+    mock_service.update_service_area_start_hour.side_effect = CatalogError(
+        "service_area_not_found", "Área de servicio no encontrada."
+    )
+
+    resp = client.patch(
+        "/api/catalogs/service-areas/no-existe", json={"start_hour": 6}
+    )
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------

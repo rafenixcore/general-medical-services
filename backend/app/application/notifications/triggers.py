@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from backend.app.application.confirmations.service import ConfirmationRequestService
 from backend.app.application.notifications.service import NotificationService
+from backend.app.application.notifications.service_hours import service_start_for
 from backend.app.application.notifications.templates import (
     _with_telegram_confirmation,
     render_initial_assignment,
@@ -103,18 +104,9 @@ class NotificationTriggers:
         area = session.get(ServiceAreaModel, assignment.service_area_id) if session else None
         area_name = area.display_name if area is not None else str(assignment.service_area_id)
 
-        start = getattr(assignment, "service_start_at", None)
-        if start is None and getattr(assignment, "service_date", None) is not None:
-            hour = area.start_hour if area is not None else 7
-            start = datetime(
-                assignment.service_date.year,
-                assignment.service_date.month,
-                assignment.service_date.day,
-                hour,
-                0,
-                0,
-                tzinfo=UTC,
-            )
+        # La hora del área manda sobre la copia congelada en la asignación: si el área
+        # se corrigió, el médico no puede seguir recibiendo la hora vieja.
+        start = service_start_for(assignment, area)
         return area_name, start
 
     def on_calendar_approved(

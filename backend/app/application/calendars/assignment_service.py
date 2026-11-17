@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from backend.app.application.audit.service import AuditService
 from backend.app.application.calendars.errors import CalendarServiceError
+from backend.app.application.notifications.service_hours import service_start_utc
 from backend.app.application.notifications.triggers import NotificationTriggers
 from backend.app.domain.doctors.eligibility import EligibilityChecker, EligibilityResult
 from backend.app.infrastructure.db.models.calendars import CalendarAssignmentModel, UnresolvedGapModel
@@ -1060,13 +1061,10 @@ class AssignmentService:
             created_by=actor_id,
             created_at=datetime.now(UTC),
         )
-        # Resolve service_start_at from ServiceAreaModel.start_hour
+        # La hora del área es local del hospital: se guarda su instante UTC.
         area = self.calendar_repo.session.get(ServiceAreaModel, service_area_id)
         if area and area.start_hour is not None:
-            assignment.service_start_at = datetime(
-                date.year, date.month, date.day,
-                area.start_hour, 0, 0, tzinfo=UTC,
-            )
+            assignment.service_start_at = service_start_utc(date, area.start_hour)
         assignment = self.calendar_repo.add_assignment(assignment)
 
         # 5b. Resolve any matching gap — a manual assignment fills the slot.

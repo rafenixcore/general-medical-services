@@ -23,6 +23,7 @@ from backend.app.schemas.catalogs import (
     ReportSignaturesRead,
     ReportSignaturesUpdate,
     ServiceAreaRead,
+    ServiceAreaUpdateRequest,
     UpdateDeactivationReasonRequest,
     UpdateDepartmentRequest,
     UpdateRankRequest,
@@ -103,6 +104,30 @@ def list_service_areas(
 ) -> list[ServiceAreaRead]:
     areas = CatalogRepository(session).list_service_areas()
     return [ServiceAreaRead.model_validate(area) for area in areas]
+
+
+@router.patch("/service-areas/{area_id}", response_model=ServiceAreaRead)
+def update_service_area(
+    area_id: str,
+    payload: ServiceAreaUpdateRequest,
+    _current_user: Annotated[UserModel, Depends(require_permission("manage_catalogs"))],
+    service: Annotated[CatalogService, Depends(get_catalog_service)],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> ServiceAreaRead:
+    """Corrige la hora a la que empieza el servicio en un área.
+
+    Es la hora que leen los avisos y los plazos de confirmación, no solo la del texto:
+    por eso se edita aquí, con permiso de catálogos, y no hace falta tocar la base.
+    """
+    try:
+        area = service.update_service_area_start_hour(area_id, payload.start_hour)
+    except CatalogError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    session.commit()
+    return ServiceAreaRead.model_validate(area)
 
 
 @router.get("/deactivation-reasons", response_model=list[DeactivationReasonRead])

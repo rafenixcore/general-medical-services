@@ -1,4 +1,6 @@
-from backend.app.application.catalogs.service import CatalogService
+import pytest
+
+from backend.app.application.catalogs.service import CatalogError, CatalogService
 from backend.app.infrastructure.repositories.catalogs import CatalogRepository
 
 
@@ -15,6 +17,13 @@ def test_seed_initial_catalogs_creates_mvp_service_areas(db_session) -> None:
     assert repository.get_service_area_by_code("emergencia").load_weight == 3
     assert repository.get_service_area_by_code("pista").load_weight == 2
     assert repository.get_service_area_by_code("disponible").load_weight == 1
+
+    # La hora configurada tiene que llegar a la base: si el seed no la pasa, el
+    # default de la columna (7) hace que Pista también empiece a las 7 y los avisos
+    # le digan al médico una hora equivocada.
+    assert repository.get_service_area_by_code("emergencia").start_hour == 7
+    assert repository.get_service_area_by_code("pista").start_hour == 6
+    assert repository.get_service_area_by_code("disponible").start_hour == 7
 
     department_names = {department.name for department in repository.list_departments()}
     assert department_names == {
@@ -99,3 +108,36 @@ def test_create_update_and_soft_delete_deactivation_reason(db_session) -> None:
     assert deleted.active is False
     assert deleted.deleted_at is not None
     assert repository.list_deactivation_reasons() == []
+
+
+def test_update_service_area_start_hour(db_session) -> None:
+    repository = CatalogRepository(db_session)
+    service = CatalogService(repository)
+    service.seed_initial_catalogs()
+    pista = repository.get_service_area_by_code("pista")
+
+    updated = service.update_service_area_start_hour(pista.id, 8)
+
+    assert updated.start_hour == 8
+    db_session.expire_all()
+    assert repository.get_service_area_by_code("pista").start_hour == 8
+
+
+def test_update_service_area_start_hour_rejects_out_of_range(db_session) -> None:
+    repository = CatalogRepository(db_session)
+    service = CatalogService(repository)
+    service.seed_initial_catalogs()
+    pista = repository.get_service_area_by_code("pista")
+
+    with pytest.raises(CatalogError):
+        service.update_service_area_start_hour(pista.id, 24)
+
+    db_session.expire_all()
+    assert repository.get_service_area_by_code("pista").start_hour == 6
+
+
+def test_update_service_area_start_hour_not_found(db_session) -> None:
+    service = CatalogService(CatalogRepository(db_session))
+
+    with pytest.raises(CatalogError):
+        service.update_service_area_start_hour("no-existe", 8)

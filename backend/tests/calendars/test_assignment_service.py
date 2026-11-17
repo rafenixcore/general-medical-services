@@ -222,6 +222,12 @@ def test_assign_doctor_to_slot(db_session) -> None:
     assert assignment.calendar_version_id == version.id
     assert assignment.service_area_id == _AREA_ID
     assert assignment.service_date == datetime.date(2026, 5, 15)
+    # El área empieza a las 07:00 locales (UTC-4) = 11:00 UTC. La columna guarda el
+    # instante, no la hora de pared: si se guardara 07:00 UTC el turno se adelantaría
+    # cuatro horas para todo lo que lea la copia.
+    assert assignment.service_start_at == datetime.datetime(
+        2026, 5, 15, 11, 0, tzinfo=datetime.UTC
+    )
 
 
 # ---------------------------------------------------------------------------

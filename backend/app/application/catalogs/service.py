@@ -60,6 +60,9 @@ class CatalogService:
                         active=True,
                         required_for_daily_coverage=bool(item["required_for_daily_coverage"]),
                         load_weight=int(item["load_weight"]),
+                        # Sin esto el valor por defecto de la columna (7) pisaba el 6 de
+                        # Pista: todas las áreas nacían a las 7 y los avisos mentían.
+                        start_hour=int(item["start_hour"]),
                         created_at=now,
                         updated_at=now,
                     )
@@ -229,6 +232,26 @@ class CatalogService:
                 )
             )
         return self.get_report_signatures()
+
+    def update_service_area_start_hour(
+        self, area_id: str, start_hour: int
+    ) -> ServiceAreaModel:
+        """Cambia la hora a la que empieza el servicio en un área.
+
+        Es la fuente de verdad de los avisos y de los plazos de confirmación: los
+        mensajes de los turnos ya creados se recalculan con este valor, así que
+        corregir el área corrige también lo que ya está en el calendario.
+        """
+        area = self.catalogs.get_service_area_by_id(area_id)
+        if area is None:
+            raise CatalogError("service_area_not_found", "Área de servicio no encontrada.")
+        if not 0 <= start_hour <= 23:
+            raise CatalogError(
+                "invalid_start_hour", "La hora de inicio debe estar entre 0 y 23."
+            )
+        area.start_hour = start_hour
+        self.catalogs.update_service_area(area_id, start_hour=start_hour)
+        return area
 
     def create_rank(self, name: str, abbreviation: str) -> RankModel:
         now = datetime.now(UTC)

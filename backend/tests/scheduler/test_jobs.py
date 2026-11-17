@@ -9,6 +9,8 @@ patches must target the source modules, not the jobs module.
 from datetime import UTC, datetime, timedelta, date
 from unittest.mock import MagicMock, patch
 
+from backend.app.core.timezones import SERVICE_TIMEZONE
+
 
 def _make_scalars_result(items):
     """Build a mock that mimics SQLAlchemy scalars() Result.
@@ -26,6 +28,16 @@ def _make_scalars_result(items):
     return result_mock
 
 
+def _local_start(day, hour):
+    """La hora del área es hora de pared del hospital, no UTC."""
+    return datetime(day.year, day.month, day.day, hour, 0, 0, tzinfo=SERVICE_TIMEZONE)
+
+
+def _utc_time_before_start(day, hour, hours):
+    """Instante UTC en que cae el recordatorio, N horas antes del inicio local."""
+    return (_local_start(day, hour) - timedelta(hours=hours)).astimezone(UTC)
+
+
 class TestSendPreServiceReminders:
     """Tests for send_pre_service_reminders() job."""
 
@@ -35,10 +47,7 @@ class TestSendPreServiceReminders:
         a.doctor_id = doctor_id
         a.service_area_id = service_area_id
         a.service_date = service_date
-        a.service_start_at = datetime(
-            service_date.year, service_date.month, service_date.day,
-            service_start_hour, 0, 0, tzinfo=UTC,
-        )
+        a.service_start_at = _local_start(service_date, service_start_hour).astimezone(UTC)
         return a
 
     def make_doctor(self, doctor_id, name, whatsapp_phone):
@@ -62,8 +71,7 @@ class TestSendPreServiceReminders:
 
         tomorrow = date.today() + timedelta(days=1)
         start_hour = 8
-        start_dt = datetime(tomorrow.year, tomorrow.month, tomorrow.day, start_hour, 0, 0, tzinfo=UTC)
-        reminder_time = start_dt - timedelta(hours=12)
+        reminder_time = _utc_time_before_start(tomorrow, start_hour, 12)
 
         doctor = self.make_doctor("d1", "Dr. Test", "+18091234567")
         area = self.make_area("emergencia", "Emergencia", start_hour)
@@ -112,16 +120,66 @@ class TestSendPreServiceReminders:
             "callback_data"
         ] == "confirm:conf-reminder"
 
+    def test_uses_area_hour_even_when_assignment_time_is_stale(self):
+        """Corregir la hora del área corrige el recordatorio de los turnos ya creados.
+
+        La asignación conserva la hora vieja (07:00) y el área ya dice 06:00: el aviso
+        tiene que salir en la ventana de las 06:00 y decir 6:00 AM, no 7:00 AM.
+        """
+        from backend.app.application.scheduler.jobs import send_pre_service_reminders
+
+        tomorrow = date.today() + timedelta(days=1)
+        start_hour = 6
+        reminder_time = _utc_time_before_start(tomorrow, start_hour, 12)
+
+        doctor = self.make_doctor("d1", "Dr. Test", "+18091234567")
+        area = self.make_area("pista", "Pista", start_hour)
+        assignment = self.make_assignment(
+            "d1", "pista", tomorrow, service_start_hour=7
+        )
+
+        pending = MagicMock()
+        pending.id = "conf-reminder"
+
+        mock_session = MagicMock()
+        mock_session.scalars.side_effect = [
+            _make_scalars_result([assignment]),
+            _make_scalars_result([pending]),
+        ]
+        mock_session.get.side_effect = lambda model, pk: {
+            "d1": doctor, "pista": area,
+        }.get(pk)
+
+        mock_svc = MagicMock()
+        mock_svc.queue.return_value = MagicMock(id="notif-001")
+
+        with patch(
+            "backend.app.infrastructure.db.session.SessionLocal",
+            return_value=mock_session,
+        ), patch(
+            "backend.app.application.notifications.service.NotificationService",
+            return_value=mock_svc,
+        ), patch(
+            "backend.app.infrastructure.repositories.notifications.NotificationRepository",
+        ), patch(
+            "datetime.datetime",
+        ) as mock_dt_cls:
+            mock_dt_cls.now.return_value = reminder_time
+
+            result = send_pre_service_reminders()
+
+        assert result["reminders_sent"] == 1
+        message = mock_svc.queue.call_args.kwargs["payload"]["message"]["text"]
+        assert "6:00 AM" in message
+        assert "7:00 AM" not in message
+
     def test_reminder_creates_a_confirmation_when_none_is_pending(self):
         """Sin confirmación pendiente el aviso salía sin botón y decía "Responda 1"."""
         from backend.app.application.scheduler.jobs import send_pre_service_reminders
 
         tomorrow = date.today() + timedelta(days=1)
         start_hour = 8
-        start_dt = datetime(
-            tomorrow.year, tomorrow.month, tomorrow.day, start_hour, 0, 0, tzinfo=UTC
-        )
-        reminder_time = start_dt - timedelta(hours=12)
+        reminder_time = _utc_time_before_start(tomorrow, start_hour, 12)
 
         doctor = self.make_doctor("d1", "Dr. Test", "+18091234567")
         area = self.make_area("emergencia", "Emergencia", start_hour)
@@ -171,8 +229,7 @@ class TestSendPreServiceReminders:
 
         tomorrow = date.today() + timedelta(days=1)
         start_hour = 8
-        start_dt = datetime(tomorrow.year, tomorrow.month, tomorrow.day, start_hour, 0, 0, tzinfo=UTC)
-        reminder_time = start_dt - timedelta(hours=12)
+        reminder_time = _utc_time_before_start(tomorrow, start_hour, 12)
 
         doctor = self.make_doctor("d1", "Dr. SinWhatsApp", None)
         area = self.make_area("emergencia", "Emergencia", start_hour)
@@ -206,8 +263,7 @@ class TestSendPreServiceReminders:
 
         tomorrow = date.today() + timedelta(days=1)
         start_hour = 8
-        start_dt = datetime(tomorrow.year, tomorrow.month, tomorrow.day, start_hour, 0, 0, tzinfo=UTC)
-        outside_window = start_dt - timedelta(hours=14)
+        outside_window = _utc_time_before_start(tomorrow, start_hour, 14)
 
         doctor = self.make_doctor("d1", "Dr. Test", "+18091234567")
         area = self.make_area("emergencia", "Emergencia", start_hour)

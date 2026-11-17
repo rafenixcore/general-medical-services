@@ -38,6 +38,19 @@ class CatalogRepository:
         statement = select(ServiceAreaModel).where(ServiceAreaModel.code == code)
         return self.session.scalar(statement)
 
+    def get_service_area_by_id(self, area_id: str) -> ServiceAreaModel | None:
+        return self.session.get(ServiceAreaModel, area_id)
+
+    def update_service_area(self, area_id: str, **fields: object) -> None:
+        now = datetime.now(UTC)
+        values = {**fields, "updated_at": now}
+        self.session.execute(
+            update(ServiceAreaModel)
+            .where(ServiceAreaModel.id == area_id)
+            .values(**values)
+        )
+        self.session.flush()
+
     def list_service_areas(self) -> list[ServiceAreaModel]:
         statement = select(ServiceAreaModel).order_by(ServiceAreaModel.code)
         return list(self.session.scalars(statement))
