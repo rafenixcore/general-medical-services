@@ -7,6 +7,8 @@ open, try/commit, except/rollback, finally/close.
 
 import logging
 
+from backend.app.application.notifications.service_hours import service_start_for
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,14 +115,12 @@ def send_pre_service_reminders() -> dict:
             if not recipient:
                 continue
 
-            if a.service_start_at:
-                start_dt = a.service_start_at
-            else:
-                area = session.get(ServiceAreaModel, a.service_area_id)
-                start_hour = area.start_hour if area else 7
-                start_dt = datetime(
-                    tomorrow.year, tomorrow.month, tomorrow.day, start_hour, 0, 0, tzinfo=UTC
-                )
+            # La hora del área manda sobre la copia congelada en la asignación: si el
+            # área se corrigió, el aviso no puede seguir usando la hora vieja.
+            area = session.get(ServiceAreaModel, a.service_area_id)
+            start_dt = service_start_for(a, area)
+            if start_dt is None:
+                continue  # sin hora no hay de dónde anclar el recordatorio
 
             reminder_target = start_dt - timedelta(
                 hours=settings.confirmation_reminder_hours_before_service
@@ -131,7 +131,6 @@ def send_pre_service_reminders() -> dict:
             if not (window_start <= now <= window_end):
                 continue
 
-            area = session.get(ServiceAreaModel, a.service_area_id)
             area_name = area.display_name if area else str(a.service_area_id)
             hour_12 = start_dt.hour % 12 or 12
             ampm = "AM" if start_dt.hour < 12 else "PM"

@@ -556,3 +556,32 @@ def test_calendar_approval_uses_area_name_and_time(db_session, actor_user):
     assert "Emergencia" in event.payload["message"]
     assert "07:00 AM" in event.payload["message"]
     assert str(assignment.service_area_id) not in event.payload["message"]
+
+
+def test_service_area_hour_wins_over_stale_assignment_time(db_session, actor_user):
+    """Corregir el área corrige también los turnos ya creados.
+
+    El aviso leía la hora congelada en `service_start_at`; si el área estaba mal
+    configurada, el médico seguía recibiendo la hora vieja para siempre. Ahora la
+    hora del área manda, así que un turno de Pista creado a las 07:00 se anuncia a
+    las 06:00 en cuanto el área se corrige.
+    """
+    from backend.app.infrastructure.db.models.catalogs import ServiceAreaModel
+    from backend.app.infrastructure.db.models.notifications import NotificationEventModel
+
+    doctor = _create_doctor(db_session)
+    assignment = _make_assignment(db_session, doctor_id=doctor.id)
+    assignment.service_start_at = datetime.datetime(
+        2026, 5, 1, 7, 0, tzinfo=datetime.UTC
+    )
+    area = db_session.get(ServiceAreaModel, assignment.service_area_id)
+    area.start_hour = 6
+    db_session.flush()
+
+    triggers = _make_triggers(db_session)
+    triggers.on_calendar_approved(actor_id=_ACTOR, assignments=[assignment])
+
+    event = db_session.query(NotificationEventModel).one()
+    message = event.payload["message"]
+    assert "06:00 AM" in message
+    assert "07:00 AM" not in message

@@ -34,7 +34,11 @@ export interface CreateDoctorPayload {
   allowed_area_ids: string[];
 }
 
-export interface ServiceAreaRead { id: string; code: string; display_name: string; active: boolean; }
+export interface ServiceAreaRead {
+  id: string; code: string; display_name: string; active: boolean;
+  /** Hora a la que empieza el servicio. Es la que usan los avisos y los plazos. */
+  start_hour: number;
+}
 export interface RankRead { id: string; name: string; abbreviation: string; active: boolean; }
 export interface DepartmentRead { id: string; name: string; normalized_name: string; active: boolean; }
 /** Editable lines of the weekly list PDF signatures. The left name is not here:
@@ -105,6 +109,10 @@ export const doctorsApi = {
   unlinkTelegram: (id: string) =>
     apiFetch<void>(`/doctors/${id}/unlink-telegram`, { method: "POST" }),
   listServiceAreas: () => apiFetch<ServiceAreaRead[]>("/catalogs/service-areas"),
+  updateServiceAreaStartHour: (id: string, startHour: number) =>
+    apiFetch<ServiceAreaRead>(`/catalogs/service-areas/${id}`, {
+      method: "PATCH", body: JSON.stringify({ start_hour: startHour }),
+    }),
   listRanks: () => apiFetch<RankRead[]>("/catalogs/ranks"),
   createRank: (name: string, abbreviation: string) =>
     apiFetch<RankRead>("/catalogs/ranks", {

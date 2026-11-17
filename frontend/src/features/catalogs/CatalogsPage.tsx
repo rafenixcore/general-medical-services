@@ -583,6 +583,93 @@ function NotificationSettingsTab() {
       >
         <Check size={15} /> {saveMutation.isPending ? "Guardando…" : "Guardar"}
       </button>
+
+      <ServiceAreaHoursSection />
+    </div>
+  );
+}
+
+/**
+ * Hora a la que empieza el servicio en cada área.
+ *
+ *  De esta hora cuelgan el texto del aviso y los plazos de confirmación (recordatorio
+ *  12 h antes, escalación 8 h antes, vencimiento 4 h antes). Un área mal configurada
+ *  hace que el médico lea una hora equivocada, así que tiene que poder revisarse y
+ *  corregirse desde aquí: la hora del área manda sobre la copia guardada en el turno.
+ */
+function ServiceAreaHoursSection() {
+  const { addToast } = useToast();
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState<Record<string, string>>({});
+
+  const { data: areas = [] } = useQuery({
+    queryKey: ["service-areas"],
+    queryFn: () => doctorsApi.listServiceAreas(),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ id, hour }: { id: string; hour: number }) =>
+      doctorsApi.updateServiceAreaStartHour(id, hour),
+    onSuccess: (saved) => {
+      addToast("success", `${saved.display_name}: hora de inicio guardada.`);
+      setDraft(prev => {
+        const next = { ...prev };
+        delete next[saved.id];
+        return next;
+      });
+      qc.invalidateQueries({ queryKey: ["service-areas"] });
+    },
+    onError: (err: Error) =>
+      addToast("error", err.message || "No se pudo guardar la hora de inicio."),
+  });
+
+  return (
+    <div style={{ marginTop: "32px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
+      <h4 style={{ margin: "0 0 6px", fontSize: "0.9rem" }}>Hora de inicio por área</h4>
+      <p style={{ color: "#64748b", fontSize: "0.85rem", marginTop: 0 }}>
+        Se interpreta como <strong>hora local del hospital</strong> (UTC-4). De esta hora
+        dependen el texto del aviso y sus plazos: recordatorio 12 h antes, escalación 8 h
+        antes y vencimiento de la confirmación 4 h antes. Corregirla corrige también los
+        turnos que ya están en el calendario.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxWidth: "460px" }}>
+        {areas.map(area => {
+          const value = draft[area.id] ?? String(area.start_hour);
+          const parsed = Number(value);
+          const invalid =
+            value.trim() === "" || !Number.isInteger(parsed) || parsed < 0 || parsed > 23;
+          const dirty = parsed !== area.start_hour;
+          return (
+            <div key={area.id} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ flex: 1 }}>{area.display_name}</span>
+              <input
+                type="number"
+                min={0}
+                max={23}
+                value={value}
+                aria-label={`Hora de inicio de ${area.display_name}`}
+                onChange={e => setDraft(prev => ({ ...prev, [area.id]: e.target.value }))}
+                style={{ width: "80px" }}
+              />
+              <span style={{ color: "#64748b", fontSize: "0.8rem" }}>h</span>
+              <button
+                className="btn-primary"
+                disabled={invalid || !dirty || saveMutation.isPending}
+                onClick={() => saveMutation.mutate({ id: area.id, hour: parsed })}
+              >
+                Guardar
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {areas.some(area => {
+        const value = draft[area.id] ?? String(area.start_hour);
+        const parsed = Number(value);
+        return value.trim() !== "" && (parsed < 0 || parsed > 23);
+      }) && (
+        <p className="form-error">La hora de inicio debe estar entre 0 y 23.</p>
+      )}
     </div>
   );
 }

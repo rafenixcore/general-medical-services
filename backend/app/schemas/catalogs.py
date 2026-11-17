@@ -8,8 +8,15 @@ class ServiceAreaRead(BaseModel):
     active: bool
     required_for_daily_coverage: bool
     load_weight: int
+    # Hora a la que empieza el servicio. Es la que usan los avisos y los plazos de
+    # confirmación, así que se expone para poder revisarla y corregirla.
+    start_hour: int
 
     model_config = {"from_attributes": True}
+
+
+class ServiceAreaUpdateRequest(BaseModel):
+    start_hour: int = Field(ge=0, le=23)
 
 
 class DeactivationReasonRead(BaseModel):

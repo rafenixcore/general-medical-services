@@ -16,6 +16,9 @@ const mockCreateDeactivationReason = vi.fn().mockResolvedValue({
 });
 const mockUpdateRank = vi.fn().mockResolvedValue({});
 const mockUpdateDeactivationReason = vi.fn().mockResolvedValue({});
+const mockUpdateServiceAreaStartHour = vi.fn().mockResolvedValue({
+  id: "area-p", code: "pista", display_name: "Pista", active: true, start_hour: 6,
+});
 
 const { SIGNATURES, mockSaveReportSignatures } = vi.hoisted(() => {
   const signatures = {
@@ -69,6 +72,14 @@ vi.mock("../../api/doctors", () => ({
     createDeactivationReason: (...args: unknown[]) => mockCreateDeactivationReason(...args),
     updateDeactivationReason: (...args: unknown[]) => mockUpdateDeactivationReason(...args),
     deleteDeactivationReason: vi.fn(),
+    getNotificationSettings: vi.fn().mockResolvedValue({ license_reminder_days: 2 }),
+    saveNotificationSettings: vi.fn().mockResolvedValue({ license_reminder_days: 2 }),
+    listServiceAreas: vi.fn().mockResolvedValue([
+      { id: "area-e", code: "emergencia", display_name: "Emergencia", active: true, start_hour: 7 },
+      { id: "area-p", code: "pista", display_name: "Pista", active: true, start_hour: 7 },
+    ]),
+    updateServiceAreaStartHour: (...args: unknown[]) =>
+      mockUpdateServiceAreaStartHour(...args),
   },
 }));
 
@@ -204,6 +215,22 @@ describe("CatalogsPage", () => {
           left_title1: "Sargento Médico FARD.",
         })
       );
+    });
+  });
+
+  it("corrige la hora de inicio de un área desde los avisos", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Avisos$/ }));
+    expect(await screen.findByText("Hora de inicio por área")).toBeInTheDocument();
+
+    const pista = await screen.findByLabelText("Hora de inicio de Pista");
+    fireEvent.change(pista, { target: { value: "6" } });
+    const row = pista.closest("div") as HTMLDivElement;
+    fireEvent.click(within(row).getByRole("button", { name: /Guardar/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateServiceAreaStartHour).toHaveBeenCalledWith("area-p", 6);
     });
   });
 });
